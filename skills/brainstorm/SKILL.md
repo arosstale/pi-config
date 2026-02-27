@@ -367,18 +367,32 @@ Keep the name short and descriptive (e.g., `feat/jwt-auth`, `fix/null-response`,
 ### The Pattern
 
 1. **Run worker for each todo** — one at a time, waiting for completion
-2. **Check results** — verify files were created/modified correctly
-3. **Handle failures** — if a worker fails, diagnose and retry or fix manually
-4. **Run reviewer last** — only after all todos are complete
+2. **Self-review before every commit** — the worker must run the gate from the commit skill before committing. Not optional.
+3. **Check results** — verify files were created/modified correctly
+4. **Handle failures** — if a worker fails, diagnose and retry or fix manually
+5. **Run reviewer last** — only after all todos are complete
+
+### The local gate (must run before every commit)
+
+This is Mitsuhiko's rule: review in a clean pass before anything gets pushed. The worker that wrote the code is primed — it knows what it intended. The gate switches to reviewer mode: "is this correct?" not "does this match what I intended?"
+
+For every diff before commit:
+- **New function calls**: read the `.d.ts` or source signature, verify argument types and order match
+- **Imports**: every import resolves; type-only values use `import type`
+- **Type casts** (`as never`, `as any`): each one is a red flag — replace or justify with a comment
+- **Logic**: control flow matches intent; no missing awaits; error paths handled
+- **Typecheck**: `pnpm check` / `bun run typecheck` / `tsc --noEmit` — last, not first
+
+If anything fails: fix it, then re-run the gate from the top. Then commit.
 
 ### Example
 
 ```typescript
-// First todo — always use the commit skill for a polished, descriptive commit
-{ agent: "worker", task: "Implement TODO-xxxx. Use the commit skill to write a polished, descriptive commit message. Mark the todo as done. Plan: .pi/plans/YYYY-MM-DD-feature.md" }
+// First todo — worker implements, runs gate, then commits
+{ agent: "worker", task: "Implement TODO-xxxx. Before committing: run the self-review gate from the commit skill (read new function signatures, check imports, no as-never casts, typecheck). Then use the commit skill for a polished, descriptive commit message. Mark the todo as done. Plan: .pi/plans/YYYY-MM-DD-feature.md" }
 
 // Check result, then second todo
-{ agent: "worker", task: "Implement TODO-yyyy. Use the commit skill to write a polished, descriptive commit message. Mark the todo as done. Plan: .pi/plans/YYYY-MM-DD-feature.md" }
+{ agent: "worker", task: "Implement TODO-yyyy. Before committing: run the self-review gate from the commit skill. Then use the commit skill for a polished, descriptive commit message. Mark the todo as done. Plan: .pi/plans/YYYY-MM-DD-feature.md" }
 
 // After all todos complete, review the feature branch against main
 { agent: "reviewer", task: "Review the feature branch against main. Plan: .pi/plans/YYYY-MM-DD-feature.md" }
@@ -514,6 +528,12 @@ Check:
 ## Commit Strategy
 
 **Do NOT squash merge or merge feature branches back into main.** Every completed todo gets its own polished, descriptive commit on the feature branch using the `commit` skill — always, no exceptions.
+
+### The gate comes before the commit, always
+
+Run the self-review gate (see Phase 7) before every commit. The commit skill has the checklist. Typecheck is the last step in the gate, not the only step. A passing typecheck with an unread function signature is still a broken commit waiting to happen.
+
+The failure mode to avoid: write code → typecheck passes → commit → CI catches a type error that 10 seconds of reading the `.d.ts` would have caught. That's shipping broken commits. Don't do it.
 
 ### What Makes a Good Commit
 

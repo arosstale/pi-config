@@ -6,9 +6,7 @@ license: From mitsuhiko/agent-stuff
 
 ## CRITICAL — Never open an interactive editor
 
-**This applies to ALL git operations, not just commits.**
-
-Any git command that opens an editor will hang the agent forever. Always prevent this:
+Any git command that opens an editor will hang the agent forever.
 
 | Command | Safe version |
 |---------|-------------|
@@ -16,39 +14,67 @@ Any git command that opens an editor will hang the agent forever. Always prevent
 | `git rebase --continue` | `GIT_EDITOR=true git rebase --continue` |
 | `git merge --continue` | `GIT_EDITOR=true git merge --continue` |
 | `git cherry-pick --continue` | `GIT_EDITOR=true git cherry-pick --continue` |
-| `git revert --continue` | `GIT_EDITOR=true git revert --continue` |
-| `git rebase -i` | **Never use** — use non-interactive rebase only |
-| Any `--continue` after conflict resolution | Always prefix with `GIT_EDITOR=true` |
+| `git rebase -i` | **Never use** |
 
-**Rule: Every `--continue` gets `GIT_EDITOR=true`. No exceptions.**
+---
+
+## The gate: self-review before every push
+
+Mitsuhiko's rule: review on an empty session locally until the agent is happy with the results
+before pushing. "PR machine" review (push → CI → maintainer catches it) is too slow and too public.
+
+**The self-review is not the same pass that wrote the code.** Switch roles: you are now a reviewer
+who didn't write this. The question is "is this correct?" not "does this match what I intended?"
+
+### Checklist — run this against `git diff HEAD` before pushing
+
+**1. New function calls**
+For every function/method introduced in the diff that you haven't called before in this repo:
+- Read its actual declaration (`.d.ts`, source, `grep -n "export.*functionName"`). Not the docs — the signature.
+- Verify argument count, order, and types match what you're passing.
+- If the type is uncertain, stop and read the source. A TODO is better than a wrong assumption.
+
+**2. Imports**
+- Every import resolves to something that actually exists at that path.
+- No type-only values imported as values (missing `type` keyword in ESM strict mode).
+
+**3. Type casts**
+- `as never`, `as any`, `as unknown` in the diff? Each one is a red flag. Replace with a real type or explain why it's safe with a comment.
+
+**4. Logic**
+- Does the control flow match the intent? Scan for off-by-ones, inverted conditions, missing awaits.
+- Are error paths handled, or does the happy path silently swallow them?
+
+**5. Consistency**
+- Does this match the patterns already in the codebase? The agent orients on what's there — sloppy code teaches it to write sloppy code.
+- Naming, indentation, export style consistent with surrounding files.
+
+**6. Typecheck**
+- Run `pnpm check`, `bun run typecheck`, or `npx tsc --noEmit` — whichever the project uses.
+- This is the last check, not the first. The checklist above runs before it.
+
+If anything in 1–6 fails: fix it, re-run the checklist from the top.
 
 ---
 
 ## Commit format
 
-Create commits using Conventional Commits: `<type>(<scope>): <summary>`
+`<type>(<scope>): <summary>`
 
-- `type` REQUIRED. Use `feat` for new features, `fix` for bug fixes. Other common types: `docs`, `refactor`, `chore`, `test`, `perf`.
-- `scope` OPTIONAL. Short noun in parentheses for the affected area (e.g., `api`, `parser`, `ui`).
-- `summary` REQUIRED. Short, imperative, <= 72 chars, no trailing period.
+- `type`: `feat` / `fix` / `docs` / `refactor` / `chore` / `test` / `perf`
+- `scope`: optional short noun (`api`, `parser`, `ui`)
+- `summary`: imperative, ≤72 chars, no trailing period
+- Body: **always include one** unless the change is a trivial typo. Explain what, why, and any notable decisions. A reader of `git log` should understand the change without looking at the diff.
+- No breaking-change footers, no sign-offs.
 
-## Notes
-
-- Body is **strongly encouraged** — always include one unless the change is trivially obvious (e.g., fixing a typo). The body should explain **what** changed, **why** it changed, the approach taken, and any notable decisions. A reader of `git log` should understand the change without looking at the diff.
-- Do NOT include breaking-change markers or footers.
-- Do NOT add sign-offs (no `Signed-off-by`).
-- Only commit; do NOT push.
-- If it is unclear whether a file should be included, ask the user which files to commit.
-- Treat any caller-provided arguments as additional commit guidance. Common patterns:
-  - Freeform instructions should influence scope, summary, and body.
-  - File paths or globs should limit which files to commit. If files are specified, only stage/commit those unless the user explicitly asks otherwise.
-  - If arguments combine files and instructions, honor both.
+---
 
 ## Steps
 
-1. Infer from the prompt if the user provided specific file paths/globs and/or additional instructions.
-2. Review `git status` and `git diff` to understand the current changes (limit to argument-specified files if provided).
-3. (Optional) Run `git log -n 50 --pretty=format:%s` to see commonly used scopes.
-4. If there are ambiguous extra files, ask the user for clarification before committing.
-5. Stage only the intended files (all changes if no files specified).
-6. Run `git commit -m "<subject>"` (and `-m "<body>"` if needed).
+1. `git status` + `git diff` — understand what changed.
+2. Run the self-review checklist above against the diff.
+3. `git log -n 20 --pretty=format:%s` — check scope conventions if needed.
+4. Ask if any staged files are ambiguous.
+5. Stage the intended files.
+6. `git commit -m "<subject>" -m "<body>"`.
+7. Only commit here — **do not push** unless the user explicitly asks.
