@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>S-Tier Creative Tools & Inspo Sources</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+  
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  :root {
+    --bg: #0a0a0a;
+    --surface: #141414;
+    --surface2: #1a1a1a;
+    --border: #2a2a2a;
+    --text: #e8e8e8;
+    --text-dim: #888;
+    --accent: #ff4d00;
+    --accent2: #00d4ff;
+    --accent3: #a855f7;
+    --accent4: #22c55e;
+    --accent5: #f59e0b;
+    --accent6: #ec4899;
+    --accent7: #3b82f6;
+  }
+  
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', -apple-system, sans-serif;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* Hero */
+  .hero {
+    position: relative;
+    padding: 80px 40px 60px;
+    text-align: center;
+    overflow: hidden;
+  }
+  
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: 
+      radial-gradient(ellipse at 20% 50%, rgba(255,77,0,0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 50%, rgba(0,212,255,0.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 0%, rgba(168,85,247,0.05) 0%, transparent 50%);
+    animation: drift 20s ease-in-out infinite;
+  }
+  
+  @keyframes drift {
+    0%, 100% { transform: translate(0, 0); }
+    50% { transform: translate(-2%, 2%); }
+  }
+  
+  .hero h1 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: clamp(2.5rem, 6vw, 5rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    position: relative;
+    background: linear-gradient(135deg, #fff 0%, #aaa 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  
+  .hero .subtitle {
+    font-size: 1.1rem;
+    color: var(--text-dim);
+    margin-top: 16px;
+    position: relative;
+    font-weight: 300;
+    letter-spacing: 0.02em;
+  }
+  
+  .tier-badge {
+    display: inline-block;
+    padding: 4px 16px;
+    border-radius: 100px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+    position: relative;
+    background: linear-gradient(135deg, var(--accent), #ff8800);
+    color: #000;
+  }
+
+  /* Grid */
+  .tools-grid {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 40px 80px;
+    display: grid;
+    gap: 24px;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    position: relative;
+  }
+  
+  .card:hover {
+    border-color: #444;
+    transform: translateY(-2px);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  }
+  
+  .card-inner {
+    padding: 32px;
+  }
+  
+  .card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  
+  .card-num {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+  
+  .card-tag {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.06);
+    color: var(--text-dim);
+  }
+  
+  .card h2 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 1.8rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 8px;
+  }
+  
+  .card h2 a {
+    color: inherit;
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+  
+  .card h2 a:hover {
+    color: var(--accent);
+  }
+  
+  .card .tagline {
+    font-size: 1rem;
+    color: var(--text-dim);
+    font-weight: 400;
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+  
+  .card .description {
+    font-size: 0.9rem;
+    color: #aaa;
+    line-height: 1.7;
+    margin-bottom: 20px;
+  }
+  
+  /* Accent stripe */
+  .card .stripe {
+    height: 3px;
+    width: 100%;
+  }
+  
+  /* Feature pills */
+  .features {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  
+  .feature {
+    font-size: 0.75rem;
+    padding: 5px 12px;
+    border-radius: 100px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #bbb;
+    font-weight: 500;
+  }
+
+  /* Virgil special */
+  .virgil-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+  }
+  
+  .virgil-step {
+    padding: 12px 16px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.06);
+    font-size: 0.8rem;
+  }
+  
+  .virgil-step strong {
+    display: block;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+
+  /* Eyecandy techniques grid */
+  .techniques {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+    max-height: 120px;
+    overflow: hidden;
+    position: relative;
+  }
+  
+  .techniques::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 40px;
+    background: linear-gradient(transparent, var(--surface));
+  }
+  
+  .tech-pill {
+    font-size: 0.7rem;
+    padding: 3px 10px;
+    border-radius: 100px;
+    background: rgba(255,77,0,0.1);
+    border: 1px solid rgba(255,77,0,0.15);
+    color: #ff8844;
+    font-weight: 500;
+  }
+  
+  .tech-count {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    margin-top: 8px;
+    font-style: italic;
+  }
+
+  /* Section divider */
+  .section-label {
+    max-width: 1400px;
+    margin: 40px auto 0;
+    padding: 0 40px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* Layout helpers */
+  .two-col { grid-template-columns: 1fr 1fr; }
+  .three-col { grid-template-columns: 1fr 1fr 1fr; }
+  .full { grid-column: 1 / -1; }
+  
+  @media (max-width: 900px) {
+    .two-col, .three-col { grid-template-columns: 1fr; }
+    .hero { padding: 60px 20px 40px; }
+    .tools-grid { padding: 0 20px 60px; }
+    .section-label { padding: 0 20px; }
+  }
+
+  /* Quote */
+  .quote {
+    font-size: 1.1rem;
+    font-style: italic;
+    color: #999;
+    border-left: 3px solid var(--accent);
+    padding-left: 20px;
+    margin: 20px 0;
+    line-height: 1.7;
+  }
+
+  /* Link button */
+  .link-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text);
+    text-decoration: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    transition: all 0.2s;
+    margin-top: 8px;
+  }
+  
+  .link-btn:hover {
+    background: rgba(255,255,255,0.1);
+    border-color: rgba(255,255,255,0.2);
+  }
+  
+  .link-btn::after {
+    content: '→';
+  }
+
+  /* Footer */
+  footer {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <span class="tier-badge">S-TIER</span>
+  <h1>Creative Tools &<br>Inspo Sources</h1>
+  <p class="subtitle">The curated stack for visual storytelling, design systems, and creative direction</p>
+</div>
+
+<!-- SECTION 1: VISUAL REFERENCE -->
+<div class="section-label">Visual Reference & Technique Libraries</div>
+
+<div class="tools-grid two-col" style="margin-top: 24px;">
+
+  <!-- EYECANDY -->
+  <div class="card">
+    <div class="stripe" style="background: linear-gradient(90deg, var(--accent), #ff8800);"></div>
+    <div class="card-inner">
+      <div class="card-header">
+        <span class="card-num">01 — Reference</span>
+        <span class="card-tag">Free</span>
+      </div>
+      <h2><a href="http://eyecannndy.com" target="_blank">Eyecandy</a></h2>
+      <p class="tagline">Visual technique library for filmmakers & creators</p>
+      <p class="description">
+        A labor of love by Jacobi — an ever-growing, open-access encyclopedia of visual filmmaking techniques. 
+        Each technique has curated GIF examples from real productions. No gatekeeping, no ads, no paywalls. 
+        The anti-masterclass: just raw reference organized by technique.
+      </p>
+      <div class="quote">
+        "Creativity can be highly competitive, with top creatives often gatekeeping to maintain their edge. Thus, Eyecandy was born."
+      </div>
+      <div class="techniques">
+        <span class="tech-pill">Bullet Time</span>
+        <span class="tech-pill">Datamosh</span>
+        <span class="tech-pill">Dolly Zoom</span>
+        <span class="tech-pill">Double Exposure</span>
+        <span class="tech-pill">Dreamcore</span>
+        <span class="tech-pill">FPV Drone</span>
+        <span class="tech-pill">Freeze Frame</span>
+        <span class="tech-pill">Generative</span>
+        <span class="tech-pill">Kaleidoscope</span>
+        <span class="tech-pill">Match Cut</span>
+        <span class="tech-pill">Morphing</span>
+        <span class="tech-pill">Parallax</span>
+        <span class="tech-pill">Slit-scan</span>
+        <span class="tech-pill">Speed Ramp</span>
+        <span class="tech-pill">Whip Pan</span>
+        <span class="tech-pill">Wigglegram</span>
+        <span class="tech-pill">Weirdcore</span>
+      </div>
+      <p class="tech-count">120+ visual techniques catalogued</p>
+      <a href="http://eyecannndy.com" class="link-btn" target="_blank">eyecannndy.com</a>
+    </div>
+  </div>
+
+  <!-- FRAMESET -->
+  <div class="card">
+    <div class="stripe" style="background: linear-gradient(90deg, var(--accent2), #0088ff);"></div>
+    <div class="card-inner">
+      <div class="card-header">
+        <span class="card-num">02 — Pre-Production</span>
+        <span class="card-tag">Freemium</span>
+      </div>
+      <h2><a href="https://frameset.app" target="_blank">Frame Set</a></h2>
+      <p class="tagline">Creative development for filmmakers — storyboards, treatments & shot lists</p>
+      <p class="description">
+        The filmmaker's visual companion. Search and save frames from films, build storyboards, 
+        create treatments and shot lists. Supports the entire pre-production process — from finding 
+        visual inspiration to organizing ideas in collaborative projects. Learn from top filmmakers 
+        by studying their frame compositions.
+      </p>
+      <div class="features">
+        <span class="feature">Frame Search</span>
+        <span class="feature">Storyboarding</span>
+        <span class="feature">Shot Lists</span>
+        <span class="feature">Treatments</span>
+        <span class="feature">Collaborative Projects</span>
+        <span class="feature">Film Reference</span>
+      </div>
+      <a href="https://frameset.app" class="link-btn" target="_blank">frameset.app</a>
+    </div>
+  </div>
+
+</div>
+
+<!-- SECTION 2: MOODBOARDING & CURATION -->
+<div class="section-label">Moodboarding & Creative Curation</div>
+
+<div class="tools-grid" style="margin-top: 24px;">
+  
+  <!-- COSMOS -->
+  <div class="card full">
+    <div class="stripe" style="background: linear-gradient(90deg, var(--accent3), var(--accent6));"></div>
+    <div class="card-inner">
+      <div class="card-header">
+        <span class="card-num">03 — Curation</span>
+        <span class="card-tag">Free / Pro</span>
+      </div>
+      <h2><a href="https://cosmos.so" target="_blank">Cosmos</a></h2>
+      <p class="tagline">Your space for inspiration — discover, search, and save what's next</p>
+      <p class="description" style="max-width: 800px;">
+        A distraction-free creative curation platform. No ads, no likes, no algorithmic noise — just a calm 
+        space to collect and organize visual inspiration. Perfect for mood boards, brainstorming, and curating 
+        reference for any project. Save from anywhere via browser extension, access collections on mobile, 
+        desktop, or web. Built specifically for creatives who need to think, not scroll.
+      </p>
+      <div class="features">
+        <span class="feature">No Ads / No Likes</span>
+        <span class="feature">Browser Extension</span>
+        <span class="feature">Mood Boards</span>
+        <span class="feature">Cross-Platform</span>
+        <span class="feature">Visual Search</span>
+        <span class="feature">Collections</span>
+        <span class="feature">Distraction-Free</span>
+      </div>
+      <a href="https://cosmos.so" class="link-btn" target="_blank">cosmos.so</a>
+    </div>
+  </div>
+
+</div>
+
+<!-- SECTION 3: PHILOSOPHY & KNOWLEDGE -->
+<div class="section-label">Philosophy & Creative Knowledge</div>
+
+<div class="tools-grid" style="margin-top: 24px;">
+
+  <!-- VIRGIL -->
+  <div class="card full">
+    <div class="stripe" style="background: linear-gradient(90deg, #000, #333, #000);"></div>
+    <div class="card-inner" style="background: linear-gradient(135deg, var(--surface) 0%, #1a1510 100%);">
+      <div class="card-header">
+        <span class="card-num">04 — Philosophy</span>
+        <span class="card-tag" style="background: rgba(255,255,255,0.1); color: #fff;">Free — Open Source Knowledge</span>
+      </div>
+      <h2><a href="http://free-game.virgilabloh.com" target="_blank">Virgil Abloh — FREE GAME</a></h2>
+      <p class="tagline">A-to-Z resource for building a brand from scratch — free, forever</p>
+      <p class="description" style="max-width: 900px;">
+        Virgil's open-source playbook for creators from the fringe. Not a course, not a masterclass — 
+        a complete resource center covering brand naming, trademarks, Adobe Creative Suite, screen printing, 
+        sourcing blanks, lookbook photography, website building, and Shopify setup. Includes his Harvard GSD 
+        and Columbia GSAPP lectures. The "Figures of Speech" catalogue documents his entire trajectory.
+      </p>
+      <div class="quote">
+        "This continued commitment is supported by the 'Post-Modern' Scholarship foundation, with its mission 
+        to supply black students an education in fashion via fundraising and mentorship."
+      </div>
+      <div class="virgil-steps">
+        <div class="virgil-step"><strong>01</strong>Name Your Brand</div>
+        <div class="virgil-step"><strong>02</strong>Obtain a Trademark</div>
+        <div class="virgil-step"><strong>03</strong>Adobe Creative Suite</div>
+        <div class="virgil-step"><strong>04</strong>Screen Printing</div>
+        <div class="virgil-step"><strong>05</strong>Find Blanks</div>
+        <div class="virgil-step"><strong>06</strong>Shoot a Lookbook</div>
+        <div class="virgil-step"><strong>07</strong>Make a Website</div>
+        <div class="virgil-step"><strong>08</strong>Add Shopify</div>
+        <div class="virgil-step"><strong>09</strong>Overarching Lectures</div>
+        <div class="virgil-step"><strong>10</strong>Figures of Speech</div>
+        <div class="virgil-step"><strong>11</strong>Personal Mentors</div>
+        <div class="virgil-step"><strong>12</strong>Further Inspiration</div>
+      </div>
+      <a href="http://free-game.virgilabloh.com" class="link-btn" target="_blank">free-game.virgilabloh.com</a>
+    </div>
+  </div>
+
+</div>
+
+<!-- SECTION 4: AI DESIGN TOOLS -->
+<div class="section-label">AI-Native Design Tools</div>
+
+<div class="tools-grid three-col" style="margin-top: 24px;">
+
+  <!-- AURA -->
+  <div class="card">
+    <div class="stripe" style="background: linear-gradient(90deg, var(--accent4), #00cc88);"></div>
+    <div class="card-inner">
+      <div class="card-header">
+        <span class="card-num">05 — Templates</span>
+        <span class="card-tag">Free / Pro</span>
+      </div>
+      <h2><a href="https://aura.build" target="_blank">Aura</a></h2>
+      <p class="tagline">Beautiful design templates — landing pages, SaaS, ecommerce</p>
+      <p class="description">
+        High-fidelity landing page templates spanning SaaS, creative agencies, ecommerce, architecture, 
+        and more. Templates like "VOID Digital Studio", "Liquid Systems UI", and "Monolith Architecture" 
+        push past generic AI aesthetics into distinctive design territory.
+      </p>
+      <div class="features">
+        <span class="feature">SaaS Templates</span>
+        <span class="feature">Ecommerce</span>
+        <span class="feature">Creative Agency</span>
+        <span class="feature">Architecture</span>
+        <span class="feature">Pro Templates</span>
+      </div>
+      <a href="https://aura.build" class="link-btn" target="_blank">aura.build</a>
+    </div>
+  </div>
+
+  <!-- STITCH -->
+  <div class="card">
+    <div class="stripe" style="background: linear-gradient(90deg, var(--accent7), #6366f1);"></div>
+    <div class="card-inner">
+      <div class="card-header">
+        <span class="card-num">06 — Google</span>
+        <span class="card-tag">Free</span>
+      </div>
+      <h2><a href="https://stitch.withgoogle.com" target="_blank">Google Stitch</a></h2>
+      <p class="tagline">Generate UIs for mobile & web — design ideation, fast</p>
+      <p class="description">
+        Google's AI design tool launched at I/O 2025. Generates full mobile and web UIs from text prompts. 
+        Positioned as the "from idea to app" bridge — turns rough concepts into polished UI mockups 
+        instantly. No Figma plugin hell, just prompt and iterate.
+      </p>
+      <div class="features">
+        <span class="feature">AI UI Generation</span>
+        <span class="feature">Mobile + Web</span>
+        <span class="feature">Google Account</span>
+        <span class="feature">Free</span>
+        <span class="feature">Rapid Ideation</span>
+      </div>
+      <a href="https://stitch.withgoogle.com" class="link-btn" target="_blank">stitch.withgoogle.com</a>
+    </div>
+  </div>
+
+  <!-- MAGICPATH -->
+  <div class="card">
+    <div class="stripe" style="background: linear-gradient(90deg, var(--accent5), var(--accent));"></div>
+    <div class="card-inner">
+      <div class="card-header">
+        <span class="card-num">07 — AI Canvas</span>
+        <span class="card-tag">Free / Pro</span>
+      </div>
+      <h2><a href="https://magicpath.ai" target="_blank">MagicPath</a></h2>
+      <p class="tagline">AI-native design tool — generate, edit, export production code</p>
+      <p class="description">
+        The complete AI design toolkit. Infinite canvas, variant generation, visual + natural language editing, 
+        reusable component libraries with @mentions, Figma import (copy-paste), Chrome extension for capturing 
+        live UIs. Exports production-ready React, HTML, CSS. Used at Google, Stripe, OpenAI, Netflix.
+      </p>
+      <div class="features">
+        <span class="feature">AI Canvas</span>
+        <span class="feature">Variants</span>
+        <span class="feature">Figma Import</span>
+        <span class="feature">Code Export</span>
+        <span class="feature">Chrome Extension</span>
+        <span class="feature">Libraries</span>
+        <span class="feature">React/HTML/CSS</span>
+      </div>
+      <a href="https://magicpath.ai" class="link-btn" target="_blank">magicpath.ai</a>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  Curated by Artale · March 2026 · S-Tier Creative Stack
+</footer>
+
+</body>
+</html>

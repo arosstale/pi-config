@@ -1,0 +1,273 @@
+---
+name: suno
+description: Generate AI music via sunoapi.org and play it through cliamp. Use when asked to "create a song", "generate music", "make a beat", "write lyrics", or any music creation request.
+---
+
+# Suno — AI Music Generation
+
+Generate songs, lyrics, and instrumentals via the Suno API (sunoapi.org), then play them through cliamp.
+
+## API Key
+
+Stored as environment variable. Before any API call:
+
+```bash
+export SUNO_API_KEY="f9c6a76023f6b8fb3ba970b94ecd4ccd"
+```
+
+## Base URL
+
+```
+https://api.sunoapi.org
+```
+
+All requests need:
+```
+Authorization: Bearer $SUNO_API_KEY
+Content-Type: application/json
+```
+
+## Output Directory
+
+Save all generated songs to:
+```
+C:/Users/Artale/Music/Suno/
+```
+Create it if it doesn't exist: `mkdir -p ~/Music/Suno`
+
+---
+
+## Endpoints
+
+### 1. Check Credits
+
+```bash
+curl -s "https://api.sunoapi.org/api/v1/generate/credit" \
+  -H "Authorization: Bearer $SUNO_API_KEY"
+```
+
+Response: `{"code":200,"msg":"success","data":918.0}`
+
+Always check credits before generating. Each song costs ~10 credits.
+
+### 2. Generate Music (Simple Mode)
+
+AI writes lyrics and chooses style from your text description.
+
+```bash
+curl -s -X POST "https://api.sunoapi.org/api/v1/generate" \
+  -H "Authorization: Bearer $SUNO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "A chill lo-fi hip hop beat about coding at 3am",
+    "model": "V4_5ALL",
+    "customMode": false,
+    "instrumental": false
+  }'
+```
+
+Response: `{"code":200,"msg":"success","data":{"taskId":"abc123..."}}`
+
+### 3. Generate Music (Custom Mode)
+
+You provide lyrics and style tags. Best for precise control.
+
+```bash
+curl -s -X POST "https://api.sunoapi.org/api/v1/generate" \
+  -H "Authorization: Bearer $SUNO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "[Verse]\nWalking through the neon rain\nSearching for a sign\n[Chorus]\nWe are the midnight sun\nBurning bright till dawn",
+    "style": "synthwave, dreamy, male vocals",
+    "title": "Midnight Sun",
+    "model": "V4_5ALL",
+    "customMode": true,
+    "instrumental": false
+  }'
+```
+
+### 4. Generate Instrumental Only
+
+```bash
+curl -s -X POST "https://api.sunoapi.org/api/v1/generate" \
+  -H "Authorization: Bearer $SUNO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Epic orchestral soundtrack for a boss battle",
+    "model": "V4_5ALL",
+    "customMode": false,
+    "instrumental": true
+  }'
+```
+
+### 5. Poll for Results
+
+Generation takes 20-120 seconds. Poll every 15 seconds until `status` is `SUCCESS`.
+
+```bash
+curl -s "https://api.sunoapi.org/api/v1/generate/record-info?taskId=YOUR_TASK_ID" \
+  -H "Authorization: Bearer $SUNO_API_KEY"
+```
+
+Response when complete:
+```json
+{
+  "code": 200,
+  "data": {
+    "taskId": "abc123",
+    "status": "SUCCESS",
+    "response": {
+      "sunoData": [
+        {
+          "id": "song-id-1",
+          "audioUrl": "https://cdn.example.com/song1.mp3",
+          "streamAudioUrl": "https://cdn.example.com/stream1",
+          "imageUrl": "https://cdn.example.com/cover1.jpeg",
+          "title": "Midnight Sun",
+          "tags": "synthwave, dreamy",
+          "duration": 198.44,
+          "prompt": "[Verse] Walking through..."
+        },
+        {
+          "id": "song-id-2",
+          "audioUrl": "https://cdn.example.com/song2.mp3",
+          ...
+        }
+      ]
+    }
+  }
+}
+```
+
+Each generation produces **2 song variants**. Download both.
+
+Status values: `PENDING` → `TEXT_SUCCESS` → `FIRST_SUCCESS` → `SUCCESS` (or `FAILURE`)
+
+### 6. Generate Lyrics Only
+
+```bash
+curl -s -X POST "https://api.sunoapi.org/api/v1/generate/lyrics" \
+  -H "Authorization: Bearer $SUNO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "A song about peaceful night in the city"
+  }'
+```
+
+Response includes a `taskId`. Poll with the same record-info endpoint. Lyrics are retained 15 days.
+
+### 7. Extend a Song
+
+Continue an existing song from a specific timestamp.
+
+```bash
+curl -s -X POST "https://api.sunoapi.org/api/v1/generate/extend" \
+  -H "Authorization: Bearer $SUNO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "audioId": "ORIGINAL_SONG_ID",
+    "prompt": "Continue with an epic guitar solo",
+    "style": "rock, electric guitar",
+    "title": "Extended Version",
+    "model": "V4_5ALL",
+    "continueAt": 60
+  }'
+```
+
+`continueAt` is the timestamp in seconds where the extension starts.
+
+---
+
+## Available Models
+
+| Model | Description |
+|-------|-------------|
+| `V4` | Improved vocals |
+| `V4_5` | Smart prompts |
+| `V4_5PLUS` | Richer tones |
+| `V4_5ALL` | Better song structure (recommended) |
+| `V5` | Latest model |
+
+Default to `V4_5ALL` unless the user requests otherwise.
+
+## Style Tags
+
+Use genres and vibes, not artist names. Examples:
+- `pop, catchy, female vocals`
+- `lo-fi hip hop, chill, atmospheric`
+- `hard rock, electric guitar, intense`
+- `jazz, smooth, saxophone`
+- `electronic, synth, dreamy`
+- `classical, orchestral, epic`
+- `r&b, groovy, soul`
+- `trap, heavy bass, dark`
+
+## Additional Parameters
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `vocalGender` | `"m"` or `"f"` | Preferred vocal gender |
+| `negativeTags` | string | Styles to avoid (e.g., "Heavy Metal, Screaming") |
+| `styleWeight` | 0-1 | How strongly to apply the style (default: 0.65) |
+
+---
+
+## Workflow: Generate and Play
+
+This is the standard workflow when the user asks to create a song:
+
+### Step 1: Check credits
+```bash
+curl -s "https://api.sunoapi.org/api/v1/generate/credit" \
+  -H "Authorization: Bearer $SUNO_API_KEY" | python3 -c "import sys,json; print(f'Credits: {json.load(sys.stdin)[\"data\"]}')"
+```
+
+### Step 2: Generate the song
+Send the generation request. Save the `taskId`.
+
+### Step 3: Poll until done
+```bash
+# Poll every 15 seconds
+while true; do
+  RESULT=$(curl -s "https://api.sunoapi.org/api/v1/generate/record-info?taskId=$TASK_ID" \
+    -H "Authorization: Bearer $SUNO_API_KEY")
+  STATUS=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['status'])")
+  echo "Status: $STATUS"
+  if [ "$STATUS" = "SUCCESS" ] || [ "$STATUS" = "FAILURE" ]; then break; fi
+  sleep 15
+done
+```
+
+### Step 4: Download the MP3s
+```bash
+mkdir -p ~/Music/Suno
+# Extract audio URLs and download
+echo "$RESULT" | python3 -c "
+import sys, json, urllib.request
+data = json.load(sys.stdin)['data']['response']['sunoData']
+for i, song in enumerate(data):
+    title = song['title'].replace(' ', '_').replace('/', '_')
+    url = song['audioUrl']
+    fname = f'C:/Users/Artale/Music/Suno/{title}_{i+1}.mp3'
+    print(f'Downloading: {fname}')
+    urllib.request.urlretrieve(url, fname)
+    print(f'Saved: {fname}')
+"
+```
+
+### Step 5: Play in cliamp
+```
+interactive_shell({ command: 'cliamp.exe C:/Users/Artale/Music/Suno', reason: '🎵 Playing generated Suno music' })
+```
+
+---
+
+## Important
+
+- **Never run API calls without checking credits first** — each generation costs ~10 credits.
+- **Always poll for results** — generation is async, takes 20-120 seconds.
+- **Two variants per generation** — each request produces 2 song variations.
+- **Prompt limit** — 200 chars for simple mode, 3000 chars for custom mode lyrics.
+- **Rate limit** — 20 requests per 10 seconds.
+- **Songs expire** — audio URLs are temporary. Always download the MP3 immediately.
+- **Use cliamp for playback** — never use ffplay or other players. Always launch via `interactive_shell`.
