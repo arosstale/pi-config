@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>pi-djvj</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+canvas { display: block; width: 100%; height: 100%; }
+#controls {
+  position: fixed; top: 12px; left: 12px; z-index: 10;
+  font: 13px/1.4 'Consolas', 'SF Mono', monospace; color: #888;
+  pointer-events: none; user-select: none;
+}
+#controls.active { color: #fff; }
+#controls .title { font-size: 15px; font-weight: bold; color: #ff0080; }
+#controls .hint { opacity: 0.5; font-size: 11px; }
+#status {
+  position: fixed; bottom: 12px; left: 12px; z-index: 10;
+  font: 11px/1.4 'Consolas', monospace; color: #444;
+}
+#presetName {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  font: bold 28px 'Consolas', monospace; color: #fff;
+  text-shadow: 0 0 20px #ff0080, 0 0 40px #8000ff;
+  opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 20;
+}
+#presetName.show { opacity: 1; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="controls">
+  <div class="title">pi-djvj</div>
+  <div class="hint">Click to capture audio · Space=pause · N=next · 1-9=shader · F=fullscreen</div>
+</div>
+<div id="status">waiting for audio...</div>
+<div id="presetName"></div>
+
+<script>
+// ============================================================
+// pi-djvj — Audio-reactive shader visualizer
+// Architecture: Web Audio API → FFT → GLSL fragment shaders
+// No dependencies. No build step. One file.
+// ============================================================
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+if (!gl) document.body.innerHTML = '<h1 style="color:red;padding:40px">WebGL not supported</h1>';
+
+// ── Audio Setup ─────────────────────────────────────────────
+let audioCtx, analyser, freqData, timeData, audioReady = false;
+
+async function initAudio() {
+  try {
+    // Try system audio capture (tab/screen share)
+    const stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: { width: 1, height: 1 } });
+    // Kill the video track immediately
+    stream.getVideoTracks().forEach(t => t.stop());
+    const audioTracks = stream.getAudioTracks();
+    if (audioTracks.length === 0) throw new Error('No audio track');
+
+    audioCtx = new AudioContext();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.8;
+    const src = audioCtx.createMediaStreamSource(stream);
+    src.connect(analyser);
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+    timeData = new Uint8Array(analyser.fftSize);
+    audioReady = true;
+    document.getElementById('status').textContent = 'audio captured ✓';
+    document.getElementById('controls').classList.add('active');
+  } catch (e) {
+    // Fallback: try microphone
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioCtx = new AudioContext();
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.8;
+      const src = audioCtx.createMediaStreamSource(stream);
+      src.connect(analyser);
+      freqData = new Uint8Array(analyser.frequencyBinCount);
+      timeData = new Uint8Array(analyser.fftSize);
+      audioReady = true;
+      document.getElementById('status').textContent = 'mic input ✓';
+      document.getElementById('controls').classList.add('active');
+    } catch (e2) {
+      document.getElementById('status').textContent = 'no audio: ' + e2.message;
+    }
+  }
+}
+
+// ── Audio Feature Extraction ────────────────────────────────
+// Inspired by MidiViz keys128 + Audio Shader Studio uniforms
+function getAudioFeatures() {
+  if (!audioReady) return { bass: 0, mid: 0, treble: 0, energy: 0, beat: 0, spectrum: new Float32Array(128) };
+
+  analyser.getByteFrequencyData(freqData);
+  analyser.getByteTimeDomainData(timeData);
+
+  const n = freqData.length;
+  let bass = 0, mid = 0, treble = 0, total = 0;
+  // Bass: 0-200Hz (~bins 0-9), Mid: 200-4kHz (~bins 9-186), Treble: 4k+ (~bins 186+)
+  const bassEnd = Math.floor(n * 0.02);
+  const midEnd = Math.floor(n * 0.36);
+
+  for (let i = 0; i < n; i++) {
+    const v = freqData[i] / 255;
+    total += v;
+    if (i < bassEnd) bass += v;
+    else if (i < midEnd) mid += v;
+    else treble += v;
+  }
+  bass = bassEnd > 0 ? bass / bassEnd : 0;
+  mid = (midEnd - bassEnd) > 0 ? mid / (midEnd - bassEnd) : 0;
+  treble = (n - midEnd) > 0 ? treble / (n - midEnd) : 0;
+  const energy = total / n;
+
+  // Simple beat detection: bass spike
+  const beatThreshold = 0.6;
+  const beat = bass > beatThreshold ? (bass - beatThreshold) / (1 - beatThreshold) : 0;
+
+  // Normalized spectrum (128 bins for shader texture)
+  const spectrum = new Float32Array(128);
+  const step = n / 128;
+  for (let i = 0; i < 128; i++) {
+    spectrum[i] = freqData[Math.floor(i * step)] / 255;
+  }
+
+  return { bass, mid, treble, energy, beat, spectrum };
+}
+
+// ── Shader Compilation ──────────────────────────────────────
+function compileShader(src, type) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error('Shader error:', gl.getShaderInfoLog(s));
+    gl.deleteShader(s);
+    return null;
+  }
+  return s;
+}
+
+function createProgram(fragSrc) {
+  const vert = compileShader(`
+    attribute vec2 pos;
+    void main() { gl_Position = vec4(pos, 0.0, 1.0); }
+  `, gl.VERTEX_SHADER);
+
+  const frag = compileShader(fragSrc, gl.FRAGMENT_SHADER);
+  if (!vert || !frag) return null;
+
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vert);
+  gl.attachShader(prog, frag);
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    console.error('Link error:', gl.getProgramInfoLog(prog));
+    return null;
+  }
+  return prog;
+}
+
+// Fullscreen quad
+const quadBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+// Spectrum texture (128x1, single channel)
+const specTex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, specTex);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+// ── Shaders ─────────────────────────────────────────────────
+// Each shader is a self-contained fragment shader.
+// Uniforms: u_time, u_resolution, u_bass, u_mid, u_treble, u_energy, u_beat, u_spectrum
+
+const SHADER_HEADER = `
+precision highp float;
+uniform float u_time;
+uniform vec2 u_resolution;
+uniform float u_bass;
+uniform float u_mid;
+uniform float u_treble;
+uniform float u_energy;
+uniform float u_beat;
+uniform sampler2D u_spectrum;
+`;
+
+const shaders = [
+  // 0: Cymatics — wave interference patterns (tribute to your ai-uni cymatics work)
+  { name: 'Cymatics', frag: SHADER_HEADER + `
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / min(u_resolution.x, u_resolution.y);
+  float t = u_time * 0.5;
+
+  // Wave sources driven by audio
+  float w = 0.0;
+  for (int i = 0; i < 5; i++) {
+    float fi = float(i);
+    float angle = fi * 1.2566 + t * 0.3;
+    float radius = 0.3 + u_bass * 0.2;
+    vec2 center = vec2(cos(angle), sin(angle)) * radius;
+    float freq = 8.0 + fi * 4.0 + u_treble * 20.0;
+    float dist = length(uv - center);
+    w += sin(dist * freq - t * (2.0 + u_mid * 4.0)) / (1.0 + dist * 6.0);
+  }
+
+  // Color from interference pattern
+  float v = w * 0.5 + 0.5;
+  vec3 col = vec3(0.0);
+  col += vec3(0.1, 0.4, 0.8) * smoothstep(0.3, 0.7, v);
+  col += vec3(1.0, 0.0, 0.5) * smoothstep(0.6, 1.0, v) * (1.0 + u_beat);
+  col += vec3(0.0, 1.0, 0.8) * smoothstep(0.0, 0.3, v) * 0.3;
+  col *= 0.8 + u_energy * 0.6;
+
+  // Beat flash
+  col += vec3(1.0, 0.2, 0.6) * u_beat * 0.3;
+
+  // Vignette
+  col *= 1.0 - length(uv) * 0.5;
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`},
+
+  // 1: Flow Field — particles following noise vectors
+  { name: 'Flow Field', frag: SHADER_HEADER + `
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1,0)), f.x),
+             mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), f.x), f.y);
+}
+float fbm(vec2 p) {
+  float v = 0.0, a = 0.5;
+  for (int i = 0; i < 5; i++) { v += a * noise(p); p *= 2.0; a *= 0.5; }
+  return v;
+}
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_resolution;
+  vec2 p = uv * 4.0;
+  float t = u_time * (0.3 + u_energy * 0.5);
+
+  // Turbulent flow driven by audio
+  float n1 = fbm(p + vec2(t, 0.0) + u_bass * 2.0);
+  float n2 = fbm(p + vec2(0.0, t) + vec2(n1) * (1.0 + u_treble * 3.0));
+  float n3 = fbm(p + vec2(n2, n1) * 1.5 + t * 0.2);
+
+  // Color palette
+  vec3 col = vec3(0.0);
+  col += vec3(1.0, 0.3, 0.0) * n1 * (0.5 + u_bass);
+  col += vec3(0.0, 0.5, 1.0) * n2 * (0.5 + u_mid);
+  col += vec3(0.8, 0.0, 1.0) * n3 * (0.5 + u_treble);
+
+  // Beat pulse
+  col *= 1.0 + u_beat * 0.5;
+
+  // Tone mapping
+  col = col / (col + 1.0);
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`},
+
+  // 2: Spectrum Ring — circular frequency display
+  { name: 'Spectrum Ring', frag: SHADER_HEADER + `
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / min(u_resolution.x, u_resolution.y);
+  float angle = atan(uv.y, uv.x);
+  float dist = length(uv);
+  float t = u_time;
+
+  // Sample spectrum based on angle
+  float specIdx = (angle + 3.14159) / 6.28318;
+  float specVal = texture2D(u_spectrum, vec2(specIdx, 0.5)).r;
+
+  // Ring
+  float ringRadius = 0.35 + u_bass * 0.1;
+  float ringWidth = 0.02 + specVal * 0.15;
+  float ring = smoothstep(ringWidth, 0.0, abs(dist - ringRadius));
+
+  // Outer glow
+  float glow = smoothstep(0.3, 0.0, abs(dist - ringRadius - specVal * 0.2));
+
+  // Inner waveform
+  float wave = sin(angle * 8.0 + t * 3.0) * u_mid * 0.1;
+  float innerRing = smoothstep(0.01, 0.0, abs(dist - 0.15 - wave));
+
+  // Color
+  vec3 col = vec3(0.0);
+  vec3 ringCol = mix(vec3(0.0, 0.8, 1.0), vec3(1.0, 0.0, 0.5), specVal);
+  col += ringCol * ring * (1.0 + u_beat);
+  col += vec3(0.5, 0.0, 1.0) * glow * 0.5;
+  col += vec3(1.0, 1.0, 1.0) * innerRing * 0.6;
+
+  // Radial lines at beat
+  float lines = smoothstep(0.98, 1.0, cos(angle * 32.0)) * u_beat * 0.4;
+  col += vec3(1.0, 0.3, 0.6) * lines * smoothstep(0.5, 0.2, dist);
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`},
+
+  // 3: Fractal Pulse — mandelbrot-esque reactive fractal
+  { name: 'Fractal Pulse', frag: SHADER_HEADER + `
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / min(u_resolution.x, u_resolution.y);
+
+  // Zoom into fractal, modulated by audio
+  float zoom = 2.5 - u_bass * 0.5;
+  vec2 c = uv * zoom + vec2(-0.745, 0.186 + sin(u_time * 0.1) * 0.01);
+
+  vec2 z = vec2(0.0);
+  float iter = 0.0;
+  const float maxIter = 80.0;
+  for (float i = 0.0; i < maxIter; i++) {
+    z = vec2(z.x*z.x - z.y*z.y, 2.0*z.x*z.y) + c;
+    if (dot(z, z) > 4.0) { iter = i; break; }
+    iter = i;
+  }
+
+  float t = iter / maxIter;
+
+  // Audio-reactive coloring
+  vec3 col = vec3(0.0);
+  col += vec3(0.5 + 0.5 * cos(t * 6.28 + u_time + u_bass * 3.0),
+              0.5 + 0.5 * cos(t * 6.28 + 2.0 + u_mid * 3.0),
+              0.5 + 0.5 * cos(t * 6.28 + 4.0 + u_treble * 3.0));
+  col *= smoothstep(1.0, 0.0, t);
+  col *= 1.0 + u_beat * 0.5;
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`},
+
+  // 4: Waveform Tunnel — 3D tube with audio waveform
+  { name: 'Waveform Tunnel', frag: SHADER_HEADER + `
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / min(u_resolution.x, u_resolution.y);
+  float t = u_time;
+
+  // Tunnel coordinates
+  float angle = atan(uv.y, uv.x);
+  float dist = length(uv);
+  float tunnelZ = 1.0 / (dist + 0.01) + t * (1.0 + u_energy);
+  float tunnelAngle = angle / 3.14159;
+
+  // Spectrum sample along tunnel
+  float spec = texture2D(u_spectrum, vec2(fract(tunnelZ * 0.1), 0.5)).r;
+
+  // Grid pattern
+  float grid = smoothstep(0.02, 0.0, abs(fract(tunnelZ * 0.5) - 0.5) - 0.48);
+  grid += smoothstep(0.02, 0.0, abs(fract(tunnelAngle * 4.0) - 0.5) - 0.48);
+
+  // Color
+  vec3 col = vec3(0.0);
+  col += vec3(0.0, 0.6, 1.0) * grid * 0.3 / (dist + 0.3);
+  col += vec3(1.0, 0.0, 0.5) * spec * 0.5 / (dist + 0.2);
+  col += vec3(0.3, 0.0, 0.8) * (1.0 / (dist * 3.0 + 0.5)) * u_bass;
+
+  // Beat flash at center
+  col += vec3(1.0, 1.0, 1.0) * u_beat * 0.3 * smoothstep(0.3, 0.0, dist);
+
+  // Fog
+  col *= smoothstep(0.0, 0.3, dist);
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`},
+
+  // 5: Glitch Grid — digital corruption aesthetic
+  { name: 'Glitch Grid', frag: SHADER_HEADER + `
+float hash(float n) { return fract(sin(n) * 43758.5453); }
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_resolution;
+  float t = u_time;
+
+  // Grid
+  vec2 grid = floor(uv * (8.0 + u_treble * 16.0));
+  float gridHash = hash(grid.x * 31.0 + grid.y * 57.0 + floor(t * (2.0 + u_energy * 8.0)));
+
+  // Spectrum for this cell
+  float spec = texture2D(u_spectrum, vec2(uv.x, 0.5)).r;
+
+  // Glitch displacement
+  vec2 glitchUV = uv;
+  if (u_beat > 0.1) {
+    float row = floor(uv.y * 20.0);
+    float shift = hash(row + floor(t * 10.0)) * u_beat * 0.1;
+    glitchUV.x += shift * step(0.7, hash(row * 13.0 + floor(t * 5.0)));
+  }
+
+  // Cell brightness from audio
+  float brightness = step(0.5, gridHash) * spec;
+
+  // Scanlines
+  float scan = 0.8 + 0.2 * sin(gl_FragCoord.y * 2.0);
+
+  // Color
+  vec3 col = vec3(0.0);
+  col += vec3(0.0, 1.0, 0.5) * brightness * scan;
+  col += vec3(1.0, 0.0, 0.3) * (1.0 - brightness) * spec * 0.3 * scan;
+
+  // RGB split on beat
+  if (u_beat > 0.2) {
+    float offset = u_beat * 0.005;
+    col.r = texture2D(u_spectrum, vec2(glitchUV.x + offset, 0.5)).r;
+    col.b = texture2D(u_spectrum, vec2(glitchUV.x - offset, 0.5)).r;
+  }
+
+  // Vignette
+  col *= 1.0 - length(uv - 0.5) * 0.8;
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`},
+
+  // 6: Aurora — flowing ribbons of light
+  { name: 'Aurora', frag: SHADER_HEADER + `
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1,0)), f.x),
+             mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), f.x), f.y);
+}
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_resolution;
+  float t = u_time * 0.3;
+
+  vec3 col = vec3(0.02, 0.01, 0.05);
+
+  // Multiple aurora layers
+  for (int i = 0; i < 4; i++) {
+    float fi = float(i);
+    float y = uv.y + noise(vec2(uv.x * (2.0 + fi) + t, fi * 10.0 + t * 0.5)) * (0.3 + u_bass * 0.2);
+    float band = smoothstep(0.1, 0.0, abs(y - 0.5 - fi * 0.05));
+
+    float spec = texture2D(u_spectrum, vec2(uv.x, 0.5)).r;
+
+    vec3 bandCol;
+    if (i == 0) bandCol = vec3(0.0, 1.0, 0.5);
+    else if (i == 1) bandCol = vec3(0.0, 0.5, 1.0);
+    else if (i == 2) bandCol = vec3(0.5, 0.0, 1.0);
+    else bandCol = vec3(1.0, 0.0, 0.5);
+
+    col += bandCol * band * (0.5 + spec * 0.8 + u_energy * 0.3);
+  }
+
+  // Stars
+  float stars = step(0.998, hash(floor(gl_FragCoord.xy * 0.5))) * (0.5 + u_treble * 0.5);
+  col += vec3(stars);
+
+  // Beat pulse
+  col += vec3(0.1, 0.05, 0.15) * u_beat;
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`},
+
+  // 7: Subatomic — particles in void (inspired by MidiViz Subatomic series)
+  { name: 'Subatomic', frag: SHADER_HEADER + `
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / min(u_resolution.x, u_resolution.y);
+  float t = u_time;
+
+  vec3 col = vec3(0.0);
+
+  // Orbiting particles
+  for (int i = 0; i < 30; i++) {
+    float fi = float(i);
+    float orbitR = 0.1 + fi * 0.03 + u_bass * 0.1;
+    float speed = 1.0 + fi * 0.2 + u_energy * 2.0;
+    float phase = fi * 0.7;
+    vec2 pos = vec2(cos(t * speed + phase), sin(t * speed * 0.7 + phase)) * orbitR;
+
+    float dist = length(uv - pos);
+    float size = 0.005 + u_mid * 0.003;
+
+    // Glow
+    float glow = size / (dist + 0.001);
+    glow = min(glow, 1.0);
+
+    // Color based on orbit
+    float hue = fi / 30.0 + t * 0.05;
+    vec3 pCol = vec3(
+      0.5 + 0.5 * cos(hue * 6.28),
+      0.5 + 0.5 * cos(hue * 6.28 + 2.094),
+      0.5 + 0.5 * cos(hue * 6.28 + 4.189)
+    );
+
+    col += pCol * glow * 0.15;
+  }
+
+  // Central glow
+  float center = 0.02 / (length(uv) + 0.01);
+  col += vec3(1.0, 0.3, 0.6) * center * (0.3 + u_bass * 0.5);
+
+  // Beat explosion
+  if (u_beat > 0.1) {
+    float ring = smoothstep(0.02, 0.0, abs(length(uv) - u_beat * 0.5));
+    col += vec3(1.0, 0.5, 0.8) * ring;
+  }
+
+  // Tone map
+  col = col / (col + 0.5);
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`},
+
+  // 8: Voronoi — reactive tessellation (inspired by MidiViz Voronoi series)
+  { name: 'Voronoi', frag: SHADER_HEADER + `
+vec2 hash2(vec2 p) {
+  return fract(sin(vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3))))*43758.5453);
+}
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_resolution;
+  vec2 p = uv * (4.0 + u_bass * 2.0);
+  float t = u_time * 0.5;
+
+  // Voronoi
+  vec2 cell = floor(p);
+  float minDist = 10.0;
+  float minDist2 = 10.0;
+  vec2 closestPoint;
+
+  for (int y = -1; y <= 1; y++) {
+    for (int x = -1; x <= 1; x++) {
+      vec2 neighbor = cell + vec2(float(x), float(y));
+      vec2 point = neighbor + hash2(neighbor) * (0.5 + 0.5 * sin(t + hash2(neighbor) * 6.28));
+      float d = length(p - point);
+      if (d < minDist) { minDist2 = minDist; minDist = d; closestPoint = point; }
+      else if (d < minDist2) { minDist2 = d; }
+    }
+  }
+
+  float edge = minDist2 - minDist;
+  float spec = texture2D(u_spectrum, vec2(minDist, 0.5)).r;
+
+  // Color
+  vec3 col = vec3(0.0);
+  float cellHash = hash2(floor(closestPoint)).x;
+
+  // Cell fill modulated by spectrum
+  vec3 cellCol = mix(
+    vec3(0.0, 0.3, 0.6),
+    vec3(1.0, 0.0, 0.4),
+    cellHash
+  );
+  col = cellCol * spec * (0.5 + u_energy);
+
+  // Edge glow
+  col += vec3(0.8, 0.9, 1.0) * smoothstep(0.05, 0.0, edge) * (0.5 + u_beat);
+
+  // Beat flash
+  col += vec3(0.2, 0.1, 0.3) * u_beat * 0.5;
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`},
+
+  // ── fragcoord.xyz-grade shaders ──────────────────────────────
+
+  // 9: Black Hole — gravitational lensing + accretion disk + jets
+  { name: 'Black Hole', frag: SHADER_HEADER + `
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+vec3 aces(vec3 x) { return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / min(u_resolution.x, u_resolution.y);
+  float dist = length(uv);
+  float angle = atan(uv.y, uv.x);
+  float t = u_time;
+
+  float rs = 0.15 + u_bass * 0.05;
+  float bend = dist > rs ? rs * rs / (dist * dist) : 1.0;
+  float lDist = dist + bend * 0.3;
+  float lAngle = angle + bend * 2.0 / (dist + 0.01) * 0.15;
+
+  vec3 col = vec3(0.0);
+
+  // Accretion disk
+  float diskR = 0.25 + u_bass * 0.08;
+  float diskW = 0.12 + u_mid * 0.06;
+  float diskD = abs(lDist - diskR);
+  if (diskD < diskW && abs(uv.y) < 0.15 + u_treble * 0.05) {
+    float di = (1.0 - diskD / diskW) * (1.0 - abs(uv.y) / 0.2);
+    float doppler = 0.5 + 0.5 * cos(lAngle - t * 2.0);
+    float spec = texture2D(u_spectrum, vec2((lAngle / 3.14159 + 1.0) * 0.5, 0.5)).r;
+    col.r += di * (1.8 + doppler * 1.5 + spec * 2.0) * (0.8 + u_beat * 0.5);
+    col.g += di * (0.4 + doppler * 0.3 + spec * 0.3);
+    col.b += di * (0.2 + (1.0 - doppler) * 0.8);
+  }
+
+  // Photon ring
+  float photonR = rs * 2.5;
+  float photonGlow = exp(-pow((lDist - photonR) * 12.0, 2.0)) * (0.8 + u_beat * 0.6);
+  col += vec3(1.2, 0.6, 0.3) * photonGlow;
+
+  // Event horizon
+  if (dist < rs) col = vec3(0.0);
+
+  // Stars
+  if (dist > rs * 1.2) {
+    vec2 starUV = vec2(lAngle * 20.0 + t * 0.1, lDist * 30.0);
+    if (hash(floor(starUV)) > 0.985) col += vec3(0.3 + u_treble * 0.4);
+  }
+
+  // Jet
+  if (abs(uv.x) < 0.03 + u_bass * 0.02 && abs(uv.y) > rs) {
+    float jet = exp(-abs(uv.x) * 30.0) * exp(-abs(uv.y) * 2.0) * (0.5 + u_mid);
+    col += vec3(0.3, 0.5, 1.5) * jet;
+  }
+
+  gl_FragColor = vec4(aces(col), 1.0);
+}
+`},
+
+  // 10: Nebula — volumetric gas with triple domain warping
+  { name: 'Nebula', frag: SHADER_HEADER + `
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+  vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
+  return mix(mix(hash(i), hash(i+vec2(1,0)), f.x), mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
+}
+float fbm(vec2 p) { float v=0.0,a=0.5; for(int i=0;i<6;i++){v+=a*noise(p);p*=2.0;a*=0.5;} return v; }
+vec3 aces(vec3 x) { return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_resolution * 4.0 - 2.0;
+  float t = u_time * 0.2;
+  float w1 = fbm(uv + t + u_bass * 2.0);
+  float w2 = fbm(uv + w1 * 2.0 + u_treble * 1.5 + vec2(t * 0.3, 0.0));
+  float w3 = fbm(uv + w2 * 1.5 + vec2(0.0, t * 0.5));
+  float spec = texture2D(u_spectrum, vec2(uv.x * 0.25 + 0.5, 0.5)).r;
+  vec3 col = vec3(0.0);
+  col.r += w1 * 0.8 * (0.6 + u_bass * 0.8);
+  col.g += w2 * 0.4 * (0.3 + u_mid * 0.6);
+  col.b += w3 * 1.2 * (0.5 + u_treble * 0.8);
+  float emission = pow(max(0.0, w2 * 2.0 - 0.5), 2.0) * (1.0 + spec * 2.0);
+  col.r += emission * 1.5; col.g += emission * 0.3;
+  float absorption = pow(max(0.0, w3), 3.0);
+  col.b += absorption * 0.8; col.g += absorption * 0.2;
+  if (w1 < 0.3 && hash(floor(gl_FragCoord.xy * 0.5)) > 0.992) col += vec3(0.5 + u_treble * 0.5);
+  col *= 1.0 + u_beat * vec3(0.3, 0.2, 0.15);
+  gl_FragColor = vec4(aces(col * 0.7), 1.0);
+}
+`},
+
+  // 11: Cymatics — wave interference patterns
+  { name: 'Cymatics', frag: SHADER_HEADER + `
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / min(u_resolution.x, u_resolution.y);
+  float t = u_time * 0.5;
+  float w = 0.0;
+  for (int i = 0; i < 5; i++) {
+    float fi = float(i);
+    float a = fi * 1.2566 + t * 0.3;
+    float r = 0.3 + u_bass * 0.2;
+    vec2 c = vec2(cos(a), sin(a)) * r;
+    float freq = 8.0 + fi * 4.0 + u_treble * 20.0;
+    float d = length(uv - c);
+    w += sin(d * freq - t * (2.0 + u_mid * 4.0)) / (1.0 + d * 6.0);
+  }
+  float spec = texture2D(u_spectrum, vec2((atan(uv.y,uv.x)/3.14159+1.0)*0.5, 0.5)).r;
+  w += spec * 0.6;
+  float v = w * 0.5 + 0.5;
+  vec3 col = vec3(0.0);
+  col += vec3(0.1, 0.4, 0.8) * smoothstep(0.3, 0.7, v);
+  col += vec3(1.0, 0.0, 0.5) * smoothstep(0.6, 1.0, v) * (1.0 + u_beat);
+  col += vec3(0.0, 1.0, 0.8) * smoothstep(0.0, 0.3, v) * 0.3;
+  col *= 0.8 + u_energy * 0.6 + u_beat * 0.3;
+  col *= 1.0 - length(uv) * 0.4;
+  gl_FragColor = vec4(col, 1.0);
+}
+`},
+
+  // 12: 3D Sphere — raymarched SDF with audio-displaced surface
+  { name: '3D Sphere', frag: SHADER_HEADER + `
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+  vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
+  return mix(mix(hash(i), hash(i+vec2(1,0)), f.x), mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
+}
+float fbm(vec2 p) { float v=0.0,a=0.5; for(int i=0;i<4;i++){v+=a*noise(p);p*=2.0;a*=0.5;} return v; }
+vec3 aces(vec3 x) { return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
+
+float sdf(vec3 p) {
+  float r = length(p);
+  float theta = atan(p.y, p.x);
+  float phi = asin(p.z / max(r, 0.001));
+  float disp = fbm(vec2(theta * 2.0 + u_time * 0.5 + u_bass, phi * 3.0 + u_time * 0.3)) * 0.2 * (1.0 + u_mid * 2.0);
+  float spec = texture2D(u_spectrum, vec2((theta/3.14159+1.0)*0.5, 0.5)).r * 0.15;
+  return r - 1.0 - disp - spec;
+}
+
+vec3 calcNormal(vec3 p) {
+  float e = 0.002;
+  return normalize(vec3(sdf(p+vec3(e,0,0))-sdf(p-vec3(e,0,0)),
+                        sdf(p+vec3(0,e,0))-sdf(p-vec3(0,e,0)),
+                        sdf(p+vec3(0,0,e))-sdf(p-vec3(0,0,e))));
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / min(u_resolution.x, u_resolution.y);
+  vec3 ro = vec3(0.0, 0.0, 3.0);
+  vec3 rd = normalize(vec3(uv, -1.5));
+  float t = 0.0;
+  bool hit = false;
+  float steps = 0.0;
+
+  for (int i = 0; i < 60; i++) {
+    vec3 p = ro + rd * t;
+    float d = sdf(p);
+    if (d < 0.005) { hit = true; steps = float(i); break; }
+    if (t > 10.0) break;
+    t += d;
+  }
+
+  vec3 col = vec3(0.0);
+  if (hit) {
+    vec3 p = ro + rd * t;
+    vec3 n = calcNormal(p);
+    vec3 l = normalize(vec3(0.5, 0.7, 0.3));
+    float diff = max(0.0, dot(n, l));
+    float fill = max(0.0, n.y * 0.3 + 0.2);
+    float rim = pow(1.0 - max(0.0, dot(-rd, n)), 3.0) * 0.6;
+    float theta = atan(p.y, p.x);
+    float hue = (theta / 3.14159 + 1.0) * 0.5 + u_time * 0.05;
+    col = vec3(0.5+0.5*cos(hue*6.28), 0.5+0.5*cos(hue*6.28+2.094), 0.5+0.5*cos(hue*6.28+4.189));
+    col *= diff + fill;
+    col += vec3(rim * (0.5 + u_beat), rim * 0.3, rim * (0.8 + u_treble));
+    col *= 1.0 - steps / 60.0 * 0.5;
+  } else {
+    col = vec3(0.02, 0.01 + uv.y * 0.02, 0.05 + uv.y * 0.03);
+  }
+  gl_FragColor = vec4(aces(col), 1.0);
+}
+`},
+
+  // 13: Liquid Metal — chrome reflections via domain warping
+  { name: 'Liquid Metal', frag: SHADER_HEADER + `
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+  vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
+  return mix(mix(hash(i), hash(i+vec2(1,0)), f.x), mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
+}
+float fbm(vec2 p) { float v=0.0,a=0.5; for(int i=0;i<5;i++){v+=a*noise(p);p*=2.0;a*=0.5;} return v; }
+vec3 aces(vec3 x) { return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_resolution * 3.0;
+  float t = u_time * 0.4;
+  float n1 = fbm(uv + t + vec2(0.0, u_bass));
+  float n2 = fbm(uv + n1 * 2.0 + vec2(u_mid, u_treble));
+  float n3 = fbm(uv - n2 + vec2(t * 0.3, t * 0.5));
+  float spec = texture2D(u_spectrum, vec2(uv.x / 3.0, 0.5)).r;
+  float edge = abs(n2 - 0.5) * 4.0;
+  vec3 col = vec3(0.6 + edge * 0.4 + n1 * 0.3,
+                  0.6 + edge * 0.35 + n2 * 0.2,
+                  0.7 + edge * 0.3 + n3 * 0.4);
+  col += vec3(u_bass, u_mid, u_treble) * 0.3 * n3;
+  col += step(0.8, edge) * 0.4;
+  col *= 0.5 + u_beat * 0.2;
+  gl_FragColor = vec4(aces(col), 1.0);
+}
+`},
+
+  // 14: Fractal Flame — reactive Mandelbrot
+  { name: 'Fractal Flame', frag: SHADER_HEADER + `
+vec3 aces(vec3 x) { return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / min(u_resolution.x, u_resolution.y);
+  float zoom = 2.5 - u_bass * 0.5;
+  vec2 c = uv * zoom + vec2(-0.745 + sin(u_time*0.05)*0.005, 0.186 + cos(u_time*0.07)*0.005);
+  vec2 z = vec2(0.0);
+  float iter = 0.0;
+  for (float i = 0.0; i < 80.0; i++) {
+    z = vec2(z.x*z.x - z.y*z.y, 2.0*z.x*z.y) + c;
+    if (dot(z,z) > 4.0) { iter = i; break; }
+    iter = i;
+  }
+  float t = iter / 80.0;
+  float h = t * 6.28 + u_time * 0.3 + u_bass * 3.0;
+  vec3 col = vec3(0.5+0.5*cos(h), 0.5+0.5*cos(h+2.094+u_mid*3.0), 0.5+0.5*cos(h+4.189+u_treble*3.0));
+  col *= (1.0 - t) * (1.0 + u_beat * 0.5);
+  gl_FragColor = vec4(aces(col), 1.0);
+}
+`},
+];
+
+// ── GL State ────────────────────────────────────────────────
+let currentShaderIdx = 0;
+let currentProgram = null;
+let paused = false;
+let startTime = performance.now();
+let beatCount = 0;
+let lastBeat = 0;
+
+function switchShader(idx) {
+  idx = ((idx % shaders.length) + shaders.length) % shaders.length;
+  const prog = createProgram(shaders[idx].frag);
+  if (prog) {
+    if (currentProgram) gl.deleteProgram(currentProgram);
+    currentProgram = prog;
+    currentShaderIdx = idx;
+    showPresetName(shaders[idx].name);
+  }
+}
+
+function showPresetName(name) {
+  const el = document.getElementById('presetName');
+  el.textContent = name;
+  el.classList.add('show');
+  clearTimeout(el._timeout);
+  el._timeout = setTimeout(() => el.classList.remove('show'), 1500);
+}
+
+// Init first shader
+switchShader(0);
+
+// ── Render Loop ─────────────────────────────────────────────
+function render() {
+  requestAnimationFrame(render);
+  if (paused || !currentProgram) return;
+
+  // Resize
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth * dpr;
+  const h = canvas.clientHeight * dpr;
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  gl.viewport(0, 0, canvas.width, canvas.height);
+
+  // Audio
+  const audio = getAudioFeatures();
+
+  // Beat counter
+  if (audio.beat > 0.3 && performance.now() - lastBeat > 200) {
+    beatCount++;
+    lastBeat = performance.now();
+  }
+
+  // Upload spectrum texture
+  const specData = new Uint8Array(128);
+  for (let i = 0; i < 128; i++) specData[i] = Math.floor(audio.spectrum[i] * 255);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, specTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, 128, 1, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, specData);
+
+  // Draw
+  gl.useProgram(currentProgram);
+
+  const posLoc = gl.getAttribLocation(currentProgram, 'pos');
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  gl.enableVertexAttribArray(posLoc);
+  gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+  const time = (performance.now() - startTime) / 1000;
+  gl.uniform1f(gl.getUniformLocation(currentProgram, 'u_time'), time);
+  gl.uniform2f(gl.getUniformLocation(currentProgram, 'u_resolution'), canvas.width, canvas.height);
+  gl.uniform1f(gl.getUniformLocation(currentProgram, 'u_bass'), audio.bass);
+  gl.uniform1f(gl.getUniformLocation(currentProgram, 'u_mid'), audio.mid);
+  gl.uniform1f(gl.getUniformLocation(currentProgram, 'u_treble'), audio.treble);
+  gl.uniform1f(gl.getUniformLocation(currentProgram, 'u_energy'), audio.energy);
+  gl.uniform1f(gl.getUniformLocation(currentProgram, 'u_beat'), audio.beat);
+  gl.uniform1i(gl.getUniformLocation(currentProgram, 'u_spectrum'), 0);
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  // Status
+  document.getElementById('status').textContent =
+    `${shaders[currentShaderIdx].name} | ${audioReady ? 'audio ✓' : 'no audio'} | bass:${audio.bass.toFixed(2)} mid:${audio.mid.toFixed(2)} treble:${audio.treble.toFixed(2)}`;
+}
+
+// ── Controls ────────────────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  if (e.key === ' ') { paused = !paused; e.preventDefault(); }
+  else if (e.key === 'n' || e.key === 'N') switchShader(currentShaderIdx + 1);
+  else if (e.key === 'p' || e.key === 'P') switchShader(currentShaderIdx - 1);
+  else if (e.key === 'f' || e.key === 'F') {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen();
+  }
+  else if (e.key >= '1' && e.key <= '9') {
+    const idx = parseInt(e.key) - 1;
+    if (idx < shaders.length) switchShader(idx);
+  }
+});
+
+// Click to init audio
+canvas.addEventListener('click', () => {
+  if (!audioReady) initAudio();
+});
+
+// ── BroadcastChannel Control (for pi extension) ─────────────
+// Extension opens /api/preset?p=N which posts via BroadcastChannel
+const bc = new BroadcastChannel('pi-djvj');
+bc.onmessage = (e) => {
+  const msg = e.data;
+  if (msg.preset !== undefined) {
+    const n = parseInt(msg.preset);
+    if (!isNaN(n)) switchShader(n);
+  }
+  if (msg.name) {
+    const idx = shaders.findIndex(s => s.name.toLowerCase().includes(msg.name.toLowerCase()));
+    if (idx >= 0) switchShader(idx);
+  }
+};
+
+// Start
+render();
+</script>
+</body>
+</html>
