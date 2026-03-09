@@ -1,3 +1,8 @@
+---
+name: benchmaxxing
+description: "Max Woolf's agent optimization pipeline: implement → benchmark → optimize. Use when asked to benchmaxx, optimize with agents, or chain models for quality."
+---
+
 # Benchmaxxing — Max Woolf's Agent Optimization Pipeline
 
 > "The real annoying thing about Opus 4.6/Codex 5.3 is that it's impossible to publicly say they're an order of magnitude better than coding LLMs released just months before without sounding like an AI hype booster — but it's the counterintuitive truth." — Max Woolf

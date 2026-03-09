@@ -1,3 +1,8 @@
+---
+name: pi-gepa
+description: "Evolve pi skills and prompts through genetic mutation + selection (GEPA). Use when asked to evolve a skill, optimize a prompt, run GEPA, or when a skill underperforms."
+---
+
 # pi-gepa — Genetic Evolution via Prompt Adaptation
 
 Evolve pi skills, AGENTS.md, and agent prompts through mutation + selection.
